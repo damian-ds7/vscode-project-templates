@@ -386,6 +386,7 @@ export default class ProjectTemplatesPlugin {
                 // Remove the optional section from the output
                 processedStr = processedStr.replace(block, '');
             }
+            optionalBlockRegExp.lastIndex = 0;
         }
         return processedStr;
     }

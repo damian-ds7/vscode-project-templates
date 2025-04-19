@@ -317,7 +317,8 @@ export default class ProjectTemplatesPlugin {
      * @param optionalBlockRegExp - RegExp to identify optional blocks (first capture group should be the block title)
      * @param placeholderRegExp - RegExp to identify placeholders (first capture group should be the key name)
      * @param globalPlaceholders dictionary of global placeholder key-value pairs defined in user settings
-     * @param globalPlaceholders dictionary of placeholder key-value pairs that appeared in current template
+     * @param confirmedPlaceholders dictionary of placeholder key-value pairs that appeared in current template
+     * @param blockDecisions dictionary of block titles and decision user made, false if the first block of that title was declined, true otherwise
      * @param usePlaceholders - Whether placeholder replacement should be performed
      * @param useOptionalBlocks - Whether optional blocks should be processed
      * @returns The processed file content as a Buffer, maintaining the original encoding
@@ -328,6 +329,7 @@ export default class ProjectTemplatesPlugin {
         placeholderRegExp : RegExp,
         globalPlaceholders : {[placeholder: string] : string | undefined},
         confirmedPlaceholders : {[placeholder: string] : string | undefined},
+        blockDecisions : {[title: string] : boolean | undefined},
         usePlaceholders: boolean,
         useOptionalBlocks: boolean
     ) : Promise<Buffer> {
@@ -345,7 +347,7 @@ export default class ProjectTemplatesPlugin {
         }
 
         if (useOptionalBlocks) {
-            str = await this.resolveOptionalBlocks(str, optionalBlockRegExp);
+            str = await this.resolveOptionalBlocks(str, optionalBlockRegExp, blockDecisions);
         }
 
         if (usePlaceholders) {
@@ -364,16 +366,28 @@ export default class ProjectTemplatesPlugin {
      * @param optionalBlockRegExp regular expression to use for detecting
      *                            optional blocks.  The first capture group is used
      *                            as the block title.
+     * @param blockDecisions dictionary of block titles and decision user made, false if the first block of that title was declined, true otherwise
      * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolveOptionalBlocks(data : string, optionalBlockRegExp : RegExp) : Promise<string> {
+    private async resolveOptionalBlocks(
+        data : string,
+        optionalBlockRegExp : RegExp,
+        blockDecisions : {[title: string] : boolean | undefined}
+    ) : Promise<string> {
         let processedStr : string = data;
         let optionalMatch;
 
         while (optionalMatch = optionalBlockRegExp.exec(processedStr)) {
+            optionalBlockRegExp.lastIndex = 0;
+
             const block = optionalMatch[0];
             const title = optionalMatch[1].replace(/["']/g, '');
             const content = optionalMatch[2];
+
+            if (blockDecisions[title]) {
+                processedStr = processedStr.replace(block, content);
+                continue;
+            }
 
             const includeSection = await vscode.window.showQuickPick(['Yes', 'No'], {
                 placeHolder: `Include section "${title}"?`
@@ -382,11 +396,12 @@ export default class ProjectTemplatesPlugin {
             if (includeSection === 'Yes') {
                 // Keep the content but remove the optional tags
                 processedStr = processedStr.replace(block, content);
+                blockDecisions[title] = true;
             } else {
                 // Remove the optional section from the output
                 processedStr = processedStr.replace(block, '');
+                blockDecisions[title] = false;
             }
-            optionalBlockRegExp.lastIndex = 0;
         }
         return processedStr;
     }
@@ -494,6 +509,7 @@ export default class ProjectTemplatesPlugin {
 
         let globalPlaceholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
         let confirmedPlaceholders : {[placeholder:string] : string|undefined} = {};
+        let blockDecisions : {[title:string] : boolean|undefined} = {};
 
         // re-read configuration, merge with current list of placeholders
         let newplaceholders : {[placeholder : string] : string} = this.config.get("placeholders", {});
@@ -525,7 +541,7 @@ export default class ProjectTemplatesPlugin {
                     // if it is not a file, cannot overwrite
                     if (!fs.lstatSync(dest).isFile()) {
                         let reldest = path.relative(workspace, dest);
-                        
+
                         let variableInput = <vscode.InputBoxOptions> {
                             prompt: `Cannot overwrite "${reldest}".  Please enter a new filename"`,
                             value: reldest
@@ -592,7 +608,7 @@ export default class ProjectTemplatesPlugin {
                 let fileContents : Buffer = fs.readFileSync(src);
 
                 fileContents = await this.handleFileContents(
-                    fileContents, optionalBlockRegExp, placeholderRegExp, globalPlaceholders, confirmedPlaceholders, usePlaceholders, useOptionalBlocks
+                    fileContents, optionalBlockRegExp, placeholderRegExp, globalPlaceholders, confirmedPlaceholders, blockDecisions, usePlaceholders, useOptionalBlocks
                 );
 
                 // ensure directories exist

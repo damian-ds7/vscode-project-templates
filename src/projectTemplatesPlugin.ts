@@ -479,7 +479,7 @@ export default class ProjectTemplatesPlugin {
         let useOptionalBlocks = this.config.get("useOptionalBlocks", false);
 
         const optionalBlockRegex = /:::[ \t]*optional\{title="?([^"]+)"?\}[ \t]*\r?\n([\s\S]*?)[ \t]*:::/g;
-        const defaultValueRegex = /#\{([A-Za-z0-9_]+)(?:=([^}]*))?\}/g;
+        const placeholderRegex = /#\{([A-Za-z0-9_]+)(?:=([^}]*))?\}/g;
 
         let placeholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
 
@@ -494,7 +494,7 @@ export default class ProjectTemplatesPlugin {
 
             // maybe replace placeholders in filename
             if (usePlaceholders) {
-                dest = await this.resolvePlaceholders(dest, placeholderRegExp, placeholders) as string;
+                dest = await this.resolvePlaceholders(dest, placeholderRegex, placeholders) as string;
             }
 
 			if (fs.lstatSync(src).isDirectory()) {
@@ -578,9 +578,10 @@ export default class ProjectTemplatesPlugin {
 
                 // get src file contents
                 let fileContents : Buffer = fs.readFileSync(src);
-                if (usePlaceholders) {
-                    fileContents = await this.resolvePlaceholders(fileContents, placeholderRegExp, placeholders) as Buffer;
-                }
+
+                fileContents = await this.handleFileContents(
+                    fileContents, optionalBlockRegex, placeholderRegex, placeholders, usePlaceholders, useOptionalBlocks
+                );
 
                 // ensure directories exist
                 let parent = path.dirname(dest);

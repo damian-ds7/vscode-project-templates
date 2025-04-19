@@ -1,18 +1,17 @@
-k
-# Project Templates VSCode Extension
+# VSCode Project Templates Extension
 
 [Visual Studio code](https://code.visualstudio.com) extension that allows you to quickly create new projects based on custom templates.
 
-Inspired by [this File Templates Extension](https://github.com/brpaz/vscode-file-templates-ext), which is itself inspired by [a similar Atom Extension](https://atom.io/packages/file-templates).
+Based on [Project Templates extension by cantonios](https://github.com/cantonios/vscode-project-templates) which is inspired by [this File Templates Extension](https://github.com/brpaz/vscode-file-templates-ext), which is itself inspired by [a similar Atom Extension](https://atom.io/packages/file-templates).
 
 ## Features
 
 * Create a new project from a template directory
 * Save the current project as a template directory
 * Use customizable placeholders for easy interactive configuration
+* Use optional blocks which can be excluded while creating project from template
 
-
-![demo](https://raw.githubusercontent.com/cantonios/vscode-project-templates/master/images/demofast.gif)
+![demo](https://raw.githubusercontent.com/damian-ds7/vscode-project-templates/master/images/demo.gif)
 
 ## Install
 
@@ -153,4 +152,4 @@ This path supports VSCode's predefined variables, such as `${env:HOME}`.
 
 ### Samples
 
-A set of sample templates can be found [here](https://github.com/cantonios/vscode-project-templates/tree/master/templates)
+A set of sample templates can be found [here](https://github.com/damian-ds7/vscode-project-templates/tree/master/templates)

@@ -18,6 +18,12 @@
         "Other"
     ],
     "main": "./out/extension",
+    "activationEvents": [
+        "onCommand:extension.openTemplatesFolder",
+        "onCommand:extension.saveProjectAsTemplate",
+        "onCommand:extension.deleteTemplate",
+        "onCommand:extension.createProjectFromTemplate"
+    ],
     "contributes": {
         "configuration": {
             "type": "object",

@@ -1,14 +1,14 @@
 'use strict';
 
-import {WorkspaceConfiguration} from 'vscode';
 import * as vscode from 'vscode';
+import { WorkspaceConfiguration } from 'vscode';
+import VariableResolver from './utilities/variableResolver';
 
 import fs = require('fs');
 import path = require('path');
 
 import fsutils = require("./utilities/fsutils");
 import fmutils = require("./utilities/fmutils");
-import VariableResolver from './utilities/variableResolver';
 
 /**
  * Main class to handle the logic of the Project Templates
@@ -287,8 +287,8 @@ export default class ProjectTemplatesPlugin {
                 // check if exists
                 if (fs.existsSync(templateDir)) {
                     // confirm over-write
-                    await vscode.window.showQuickPick(["Yes", "No"], { 
-                            placeHolder: "Template '" + filename + "' already exists.  Do you wish to overwrite?" 
+                    await vscode.window.showQuickPick(["Yes", "No"], {
+                            placeHolder: "Template '" + filename + "' already exists.  Do you wish to overwrite?"
                         }).then(
                             async (choice) => {
                                 if (choice === "Yes") {
@@ -311,91 +311,170 @@ export default class ProjectTemplatesPlugin {
     }
 
     /**
-     * Replaces any placeholders found within the input data.  Will use a 
+     * Processes file content, resolving optional blocks and placeholders if enabled.
+     *
+     * @param data - Buffer containing the file content to process
+     * @param optionalBlockRegExp - RegExp to identify optional blocks (first capture group should be the block title)
+     * @param placeholderRegExp - RegExp to identify placeholders (first capture group should be the key name)
+     * @param globalPlaceholders dictionary of global placeholder key-value pairs defined in user settings
+     * @param confirmedPlaceholders dictionary of placeholder key-value pairs that appeared in current template
+     * @param blockDecisions dictionary of block titles and decision user made, false if the first block of that title was declined, true otherwise
+     * @param usePlaceholders - Whether placeholder replacement should be performed
+     * @param useOptionalBlocks - Whether optional blocks should be processed
+     * @returns The processed file content as a Buffer, maintaining the original encoding
+     */
+    private async handleFileContents(
+        data : Buffer,
+        optionalBlockRegExp : RegExp,
+        placeholderRegExp : RegExp,
+        globalPlaceholders : {[placeholder: string] : string | undefined},
+        confirmedPlaceholders : {[placeholder: string] : string | undefined},
+        blockDecisions : {[title: string] : boolean | undefined},
+        usePlaceholders: boolean,
+        useOptionalBlocks: boolean
+    ) : Promise<Buffer> {
+
+        let str: string;
+        let encoding: string = "utf8";
+
+        let fconfig = vscode.workspace.getConfiguration('files');
+        encoding = fconfig.get("files.encoding", "utf8");
+        try {
+            str = data.toString(encoding);
+        } catch (Err) {
+            // cannot decipher text from encoding, assume raw data
+            return data;
+        }
+
+        if (useOptionalBlocks) {
+            str = await this.resolveOptionalBlocks(str, optionalBlockRegExp, blockDecisions);
+        }
+
+        if (usePlaceholders) {
+            str = await this.resolvePlaceholders(str, placeholderRegExp, globalPlaceholders, confirmedPlaceholders)
+        }
+
+        let out: Buffer = Buffer.from(str, encoding);
+        return out;
+    }
+
+    /**
+     * Handles optional blocks found within input data. Will prompt user wether they
+     * should be kept, remove optional tags if yes and remove blocks if not
+     *
+     * @param data input data
+     * @param optionalBlockRegExp regular expression to use for detecting
+     *                            optional blocks.  The first capture group is used
+     *                            as the block title.
+     * @param blockDecisions dictionary of block titles and decision user made, false if the first block of that title was declined, true otherwise
+     * @returns the (potentially) modified data, with the same type as the input data
+     */
+    private async resolveOptionalBlocks(
+        data : string,
+        optionalBlockRegExp : RegExp,
+        blockDecisions : {[title: string] : boolean | undefined}
+    ) : Promise<string> {
+        let processedStr : string = data;
+        let optionalMatch;
+
+        while (optionalMatch = optionalBlockRegExp.exec(processedStr)) {
+            optionalBlockRegExp.lastIndex = 0;
+
+            const block = optionalMatch[0];
+            const title = optionalMatch[1].replace(/["']/g, '');
+            const content = optionalMatch[2];
+
+            if (blockDecisions[title]) {
+                processedStr = processedStr.replace(block, content);
+                continue
+            } else if(blockDecisions[title] === false) {
+                processedStr = processedStr.replace(block, '');
+                continue
+            }
+
+            const includeSection = await vscode.window.showQuickPick(['Yes', 'No'], {
+                placeHolder: `Include section "${title}"?`
+            });
+
+            if (includeSection === 'Yes') {
+                // Keep the content but remove the optional tags
+                processedStr = processedStr.replace(block, content);
+                blockDecisions[title] = true;
+            } else {
+                // Remove the optional section from the output
+                processedStr = processedStr.replace(block, '');
+                blockDecisions[title] = false;
+            }
+        }
+        return processedStr;
+    }
+
+    /**
+     * Replaces any placeholders found within the input data.  Will use a
      * dictionary of values from the user's workspace settings, or will prompt
      * if value is not known.
-     * 
+     *
      * @param data input data
-     * @param placeholderRegExp  regular expression to use for detecting 
+     * @param placeholderRegExp  regular expression to use for detecting
      *                           placeholders.  The first capture group is used
      *                           as the key.
-     * @param placeholders dictionary of placeholder key-value pairs
-     * @returns the (potentially) modified data, with the same type as the input data 
+     * @param globalPlaceholders dictionary of global placeholder key-value pairs defined in user settings
+     * @param globalPlaceholders dictionary of placeholder key-value pairs that appeared in current template
+     * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolvePlaceholders(data : string | Buffer, placeholderRegExp : string,
-        placeholders : {[placeholder: string] : string | undefined} ) : Promise<string | Buffer> {
-
-        // resolve each placeholder
-        let regex = RegExp(placeholderRegExp, 'g');
+    private async resolvePlaceholders(
+        data : string,
+        placeholderRegExp : RegExp,
+        globalPlaceholders : {[placeholder: string] : string | undefined},
+        confirmedPlaceholders : {[placeholder: string] : string | undefined},
+    ) : Promise<string> {
 
         // collect set of expressions and their replacements
         let match;
         let nmatches = 0;
-        let str : string;
-        let encoding : string = "utf8";
+        let str : string = data;
 
-        if (Buffer.isBuffer(data)) {
-            // get default encoding
-            let fconfig = vscode.workspace.getConfiguration('files');
-            encoding = fconfig.get("files.encoding", "utf8");
-            try {
-                str = data.toString(encoding);
-            } catch(Err) {
-                // cannot decipher text from encoding, assume raw data
-                return data;
-            }
-        } else {
-            str = data;
-        }
+        while ((match = placeholderRegExp.exec(str))) {
+            const placeholder = match[1];
+            let defaultValue : string | undefined = match[2];
 
-        while (match = regex.exec(str)) {
-            let key = match[1];
-            let val : string | undefined = placeholders[key];
-            if (!val) {
-
-                let variableInput = <vscode.InputBoxOptions> {
-                    prompt: `Please enter the desired value for "${match[0]}"`
+            // Only prompt for placeholders that haven't appeared yet
+            if (!confirmedPlaceholders[placeholder]) {
+                const initialValue : string = defaultValue || globalPlaceholders[placeholder] || '';
+                let variableInput = <vscode.InputBoxOptions>{
+                    prompt: `Please enter the desired value for "${placeholder}"`,
+                    value: initialValue // Set default value in the input box
                 };
 
-                val = await vscode.window.showInputBox(variableInput).then(
-                    value => {
-                        if (value) {
-                            // update map
-                            placeholders[key] = value;
-                        }
-                        return value;
-                    }
-                );
+                const value = await vscode.window.showInputBox(variableInput)
+                if (value) {
+                    confirmedPlaceholders[placeholder] = value;
+                } else if (globalPlaceholders[placeholder]) {
+                    // If user cancels but a global value exists, use that
+                    confirmedPlaceholders[placeholder] = globalPlaceholders[placeholder];
+                }
             }
             ++nmatches;
         }
 
         // reset regex
-        regex.lastIndex = 0;
+        placeholderRegExp.lastIndex = 0;
 
         // compute output
-        let out : string | Buffer = data;
         if (nmatches > 0) {
             // replace placeholders in string
-            str = str.replace(regex, 
+            str = str.replace(placeholderRegExp,
                 (match, key) => {
-                    let val = placeholders[key];
+                    let val = confirmedPlaceholders[key];
                     if (!val) {
                         val = match;
                     }
                     return val;
                 }
             );
-
-            // if input was a buffer, re-encode to buffer
-            if (Buffer.isBuffer(data)) {
-                out = Buffer.from(str, encoding);
-            } else {
-                out = str;
-            }
         }
 
-        return out;
+        return str;
     }
 
     /**
@@ -422,14 +501,23 @@ export default class ProjectTemplatesPlugin {
         }
 
         // update placeholder configuration
-        let usePlaceholders = this.config.get("usePlaceholders", false);
-        let placeholderRegExp = this.config.get("placeholderRegExp", "#{(\\w+?)}");
-        let placeholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
+        let usePlaceholders : boolean = this.config.get("usePlaceholders", false);
+        let useOptionalBlocks : boolean = this.config.get("useOptionalBlocks", false);
+
+        const optionalBlockRegex : string = this.config.get("optionalBlockRegExp", "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1");
+        const placeholderRegex : string = this.config.get("placeholderRegex", "#{([A-Za-z0-9_]+)(?:=([^}]*))?}");
+
+        const optionalBlockRegExp : RegExp = RegExp(optionalBlockRegex, 'g')
+        const placeholderRegExp : RegExp = RegExp(placeholderRegex, 'g')
+
+        let globalPlaceholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
+        let confirmedPlaceholders : {[placeholder:string] : string|undefined} = {};
+        let blockDecisions : {[title:string] : boolean|undefined} = {};
 
         // re-read configuration, merge with current list of placeholders
         let newplaceholders : {[placeholder : string] : string} = this.config.get("placeholders", {});
         for (let key in newplaceholders) {
-            placeholders[key] = newplaceholders[key];
+            globalPlaceholders[key] = newplaceholders[key];
         }
 
         // recursively copy files, replacing placeholders as necessary
@@ -437,7 +525,7 @@ export default class ProjectTemplatesPlugin {
 
             // maybe replace placeholders in filename
             if (usePlaceholders) {
-                dest = await this.resolvePlaceholders(dest, placeholderRegExp, placeholders) as string;
+                dest = await this.resolvePlaceholders(dest, placeholderRegExp, globalPlaceholders, confirmedPlaceholders) as string;
             }
 
 			if (fs.lstatSync(src).isDirectory()) {
@@ -456,7 +544,7 @@ export default class ProjectTemplatesPlugin {
                     // if it is not a file, cannot overwrite
                     if (!fs.lstatSync(dest).isFile()) {
                         let reldest = path.relative(workspace, dest);
-                        
+
                         let variableInput = <vscode.InputBoxOptions> {
                             prompt: `Cannot overwrite "${reldest}".  Please enter a new filename"`,
                             value: reldest
@@ -481,7 +569,7 @@ export default class ProjectTemplatesPlugin {
                         
                         // ask if user wants to replace, otherwise prompt for new filename
                         let reldest = path.relative(workspace, dest);
-                        let choice = await vscode.window.showQuickPick(["Overwrite", "Rename", "Skip", "Abort"], { 
+                        let choice = await vscode.window.showQuickPick(["Overwrite", "Rename", "Skip", "Abort"], {
                             placeHolder: `Destination file "${reldest}" already exists.  What would you like to do?`
                         });
 
@@ -521,9 +609,10 @@ export default class ProjectTemplatesPlugin {
 
                 // get src file contents
                 let fileContents : Buffer = fs.readFileSync(src);
-                if (usePlaceholders) {
-                    fileContents = await this.resolvePlaceholders(fileContents, placeholderRegExp, placeholders) as Buffer;
-                }
+
+                fileContents = await this.handleFileContents(
+                    fileContents, optionalBlockRegExp, placeholderRegExp, globalPlaceholders, confirmedPlaceholders, blockDecisions, usePlaceholders, useOptionalBlocks
+                );
 
                 // ensure directories exist
                 let parent = path.dirname(dest);

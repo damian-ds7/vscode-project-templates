@@ -1,15 +1,14 @@
 {
-    "name": "project-templates",
-    "displayName": "Project Templates",
-    "description": "Create and apply custom projects templates",
-    "version": "1.2.0",
-    "author": "C. Antonio Sánchez",
-    "publisher": "cantonios",
-    "icon": "icon.png",
-    "homepage": "https://github.com/cantonios/vscode-project-templates",
+    "name": "vscode-project-templates",
+    "displayName": "VSCode Project Templates",
+    "description": "Create and apply custom projects templates with placeholders and optional blocks",
+    "version": "1.0.0",
+    "author": "Damian D'Souza",
+    "publisher": "damian-ds7",
+    "homepage": "https://github.com/damian-ds7/vscode-project-templates",
     "repository": {
         "type": "github",
-        "url": "https://github.com/cantonios/vscode-project-templates"
+        "url": "https://github.com/damian-ds7/vscode-project-templates"
     },
     "license": "MIT",
     "engines": {
@@ -18,13 +17,13 @@
     "categories": [
         "Other"
     ],
+    "main": "./out/extension",
     "activationEvents": [
         "onCommand:extension.openTemplatesFolder",
         "onCommand:extension.saveProjectAsTemplate",
         "onCommand:extension.deleteTemplate",
         "onCommand:extension.createProjectFromTemplate"
     ],
-    "main": "./out/extension",
     "contributes": {
         "configuration": {
             "type": "object",
@@ -42,14 +41,28 @@
                         "boolean"
                     ],
                     "default": true,
-                    "description": "Look for and replace placeholders in template (e.g. #{author})"
+                    "description": "Look for and replace placeholders in template (e.g. #{author} or #{author=john} for default value limited to a template)"
+                },
+                "projectTemplates.useOptionalBlocks": {
+                    "type": [
+                        "boolean"
+                    ],
+                    "default": true,
+                    "description": "Look for and replace optional blocks in template\n(e.g.\n//-- BEGIN OPTIONAL: executable\nadd_executable(...)\n//-- END OPTIONAL: executable)"
                 },
                 "projectTemplates.placeholderRegExp": {
                     "type": [
                         "string"
                     ],
-                    "default": "#{(\\w+)?}",
-                    "description": "Regular expression for detecting placeholders (e.g. \"#{(\\w+?)}\").  The first capture group dictates the placeholder key."
+                    "default": "#{(\\w+)(?:=([^}]*))?}",
+                    "description": "Regular expression for detecting placeholders (e.g. \"#{(\\w+)(?:=([^}]*))?}\").  The first capture group dictates the placeholder key and optional second caputre can define a default value"
+                },
+                "projectTemplates.optionalBlockRegExp": {
+                    "type": [
+                        "string"
+                    ],
+                    "default": "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1",
+                    "description": "Regular expression for detecting optional blocks.  The first capture group dictates block name, second block content"
                 },
                 "projectTemplates.placeholders": {
                     "type": [
@@ -97,18 +110,11 @@
             ]
         }
     },
-    "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "postinstall": "node ./node_modules/vscode/bin/install",
-        "test": "npm run compile && node ./node_modules/vscode/bin/test"
-    },
     "devDependencies": {
         "@types/mocha": "^2.2.42",
-        "@types/node": "^8.10.25",
-        "tslint": "^5.8.0",
-        "typescript": "^2.6.1",
-        "vscode": "^1.1.21"
+        "@types/node": "^8.10.66",
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.5.2",
+        "typescript": "^2.9.2"
     }
 }

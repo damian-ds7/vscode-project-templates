@@ -311,6 +311,50 @@ export default class ProjectTemplatesPlugin {
     }
 
     /**
+     * Processes file content, resolving optional blocks and placeholders if enabled.
+     *
+     * @param data - Buffer containing the file content to process
+     * @param optionalBlockRegExp - RegExp to identify optional blocks (first capture group should be the block title)
+     * @param placeholderRegExp - RegExp to identify placeholders (first capture group should be the key name)
+     * @param placeholders - Dictionary mapping placeholder keys to their replacement values
+     * @param usePlaceholders - Whether placeholder replacement should be performed
+     * @param useOptionalBlocks - Whether optional blocks should be processed
+     * @returns The processed file content as a Buffer, maintaining the original encoding
+     */
+    private async handleFileContents(
+        data : Buffer,
+        optionalBlockRegExp : RegExp,
+        placeholderRegExp : RegExp,
+        placeholders : {[placeholder: string] : string | undefined},
+        usePlaceholders: boolean,
+        useOptionalBlocks: boolean
+    ) : Promise<Buffer> {
+
+        let str: string;
+        let encoding: string = "utf8";
+
+        let fconfig = vscode.workspace.getConfiguration('files');
+        encoding = fconfig.get("files.encoding", "utf8");
+        try {
+            str = data.toString(encoding);
+        } catch (Err) {
+            // cannot decipher text from encoding, assume raw data
+            return data;
+        }
+
+        if (useOptionalBlocks) {
+            str = await this.resolveOptionalBlocks(str, optionalBlockRegExp);
+        }
+
+        if (usePlaceholders) {
+            str = await this.resolvePlaceholders(str, placeholderRegExp, placeholders)
+        }
+
+        let out: Buffer = Buffer.from(str, encoding);
+        return out;
+    }
+
+    /**
      * Handles optional blocks found within input data. Will prompt user wether they
      * should be kept, remove optional tags if yes and remove blocks if not
      *

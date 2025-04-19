@@ -357,7 +357,7 @@ export default class ProjectTemplatesPlugin {
      * @returns the (potentially) modified data, with the same type as the input data
      */
     private async resolvePlaceholders(data : string, placeholderRegExp : RegExp,
-        placeholders : {[placeholder: string] : string | undefined} ) : Promise<string | Buffer> {
+        placeholders : {[placeholder: string] : string | undefined} ) : Promise<string> {
 
         // collect set of expressions and their replacements
         let match;

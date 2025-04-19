@@ -311,6 +311,41 @@ export default class ProjectTemplatesPlugin {
     }
 
     /**
+     * Handles optional blocks found within input data. Will prompt user wether they
+     * should be kept, remove optional tags if yes and remove blocks if not
+     *
+     * @param data input data
+     * @param optionalBlockRegExp regular expression to use for detecting
+     *                            optional blocks.  The first capture group is used
+     *                            as the block title.
+     * @returns the (potentially) modified data, with the same type as the input data
+     */
+    private async resolveOptionalBlocks(data : string, optionalBlockRegExp : string) : Promise<string> {
+        let processedStr : string = data;
+        let optionalMatch;
+        let regex = RegExp(optionalBlockRegExp, 'g');
+
+        while (optionalMatch = regex.exec(processedStr)) {
+            const block = optionalMatch[0];
+            const title = optionalMatch[1].replace(/["']/g, '');
+            const content = optionalMatch[2];
+
+            const includeSection = await vscode.window.showQuickPick(['Yes', 'No'], {
+                placeHolder: `Include section "${title}"?`
+            });
+
+            if (includeSection === 'Yes') {
+                // Keep the content but remove the optional tags
+                processedStr = processedStr.replace(block, content);
+            } else {
+                // Remove the optional section from the output
+                processedStr = processedStr.replace(block, '');
+            }
+        }
+        return processedStr;
+    }
+
+    /**
      * Replaces any placeholders found within the input data.  Will use a 
      * dictionary of values from the user's workspace settings, or will prompt
      * if value is not known.

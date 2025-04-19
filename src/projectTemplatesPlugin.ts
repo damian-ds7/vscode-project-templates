@@ -349,15 +349,15 @@ export default class ProjectTemplatesPlugin {
      * Replaces any placeholders found within the input data.  Will use a 
      * dictionary of values from the user's workspace settings, or will prompt
      * if value is not known.
-     * 
+     *
      * @param data input data
-     * @param placeholderRegExp  regular expression to use for detecting 
+     * @param placeholderRegExp  regular expression to use for detecting
      *                           placeholders.  The first capture group is used
      *                           as the key.
      * @param placeholders dictionary of placeholder key-value pairs
-     * @returns the (potentially) modified data, with the same type as the input data 
+     * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolvePlaceholders(data : string | Buffer, placeholderRegExp : string,
+    private async resolvePlaceholders(data : string, placeholderRegExp : string,
         placeholders : {[placeholder: string] : string | undefined} ) : Promise<string | Buffer> {
 
         // resolve each placeholder
@@ -366,22 +366,7 @@ export default class ProjectTemplatesPlugin {
         // collect set of expressions and their replacements
         let match;
         let nmatches = 0;
-        let str : string;
-        let encoding : string = "utf8";
-
-        if (Buffer.isBuffer(data)) {
-            // get default encoding
-            let fconfig = vscode.workspace.getConfiguration('files');
-            encoding = fconfig.get("files.encoding", "utf8");
-            try {
-                str = data.toString(encoding);
-            } catch(Err) {
-                // cannot decipher text from encoding, assume raw data
-                return data;
-            }
-        } else {
-            str = data;
-        }
+        let str : string = data;
 
         while (match = regex.exec(str)) {
             let key = match[1];
@@ -421,13 +406,6 @@ export default class ProjectTemplatesPlugin {
                     return val;
                 }
             );
-
-            // if input was a buffer, re-encode to buffer
-            if (Buffer.isBuffer(data)) {
-                out = Buffer.from(str, encoding);
-            } else {
-                out = str;
-            }
         }
 
         return out;

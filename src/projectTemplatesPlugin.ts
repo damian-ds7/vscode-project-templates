@@ -386,7 +386,10 @@ export default class ProjectTemplatesPlugin {
 
             if (blockDecisions[title]) {
                 processedStr = processedStr.replace(block, content);
-                continue;
+                continue
+            } else if(blockDecisions[title] === false) {
+                processedStr = processedStr.replace(block, '');
+                continue
             }
 
             const includeSection = await vscode.window.showQuickPick(['Yes', 'No'], {

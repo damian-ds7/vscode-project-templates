@@ -44,12 +44,26 @@
                     "default": true,
                     "description": "Look for and replace placeholders in template (e.g. #{author})"
                 },
+                "projectTemplates.useOptionalBlocks": {
+                    "type": [
+                        "boolean"
+                    ],
+                    "default": true,
+                    "description": "Look for and replace optional blocks in template\n(e.g.\n//-- BEGIN OPTIONAL: executable\nadd_executable(...)\n//-- END OPTIONAL: executable)"
+                },
                 "projectTemplates.placeholderRegExp": {
                     "type": [
                         "string"
                     ],
-                    "default": "#{(\\w+)?}",
-                    "description": "Regular expression for detecting placeholders (e.g. \"#{(\\w+?)}\").  The first capture group dictates the placeholder key."
+                    "default": "#{([A-Za-z0-9_]+)(?:=([^}]*))?}",
+                    "description": "Regular expression for detecting placeholders (e.g. \"#{([A-Za-z0-9_]+)(?:=([^}]*))?}\").  The first capture group dictates the placeholder key and optional second caputre can define a default value"
+                },
+                "projectTemplates.optionalBlockRegExp": {
+                    "type": [
+                        "string"
+                    ],
+                    "default": "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1",
+                    "description": "Regular expression for detecting optional blocks.  The first capture group dictates block name, second block content"
                 },
                 "projectTemplates.placeholders": {
                     "type": [
@@ -106,9 +120,9 @@
     },
     "devDependencies": {
         "@types/mocha": "^2.2.42",
-        "@types/node": "^8.10.25",
-        "tslint": "^5.8.0",
-        "typescript": "^2.6.1",
-        "vscode": "^1.1.21"
+        "@types/node": "^8.10.66",
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.5.2",
+        "typescript": "^2.9.2"
     }
 }

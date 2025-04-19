@@ -1,7 +1,7 @@
-
+k
 # Project Templates VSCode Extension
 
-[Visual Studio code](https://code.visualstudio.com) extension that allows you to quickly create new projects based on custom templates. 
+[Visual Studio code](https://code.visualstudio.com) extension that allows you to quickly create new projects based on custom templates.
 
 Inspired by [this File Templates Extension](https://github.com/brpaz/vscode-file-templates-ext), which is itself inspired by [a similar Atom Extension](https://atom.io/packages/file-templates).
 
@@ -16,18 +16,29 @@ Inspired by [this File Templates Extension](https://github.com/brpaz/vscode-file
 
 ## Install
 
-In Visual Studio code, Press F1 to open the command menu and type ```ext install cantonios.project-templates```.
-
 ## Extension Settings
 
 This extension contributes the following settings:
 
 ```ts
 {
-  "projectTemplates.templatesDirectory": "",          // default directory containing project templates
-  "projectTemplates.usePlaceholders": true,           // activate placeholder substitution
-  "projectTemplates.placeholders": {  },              // dictionary of default placeholder key-value pairs
-  "projectTemplates.placeholderRegExp": "#{(\\w+?)}"  // regular expression to use for detecting placeholders
+  // default directory containing project templates
+  "projectTemplates.templatesDirectory": "",
+
+  // activate placeholder substitution
+  "projectTemplates.usePlaceholders": true,
+
+  // activate optional blocks substitution
+  "projectTemplates.useOptionalBlocks": true,
+
+  // dictionary of default placeholder key-value pairs
+  "projectTemplates.placeholders": {  },
+
+  // regular expression to use for detecting placeholders
+  "projectTemplates.placeholderRegExp": "#{(\\w+)(?:=([^}]*))?}"
+
+  // regular expression to use for detecting optional blocks
+  "projectTemplates.optionalBlockRegExp": "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1"
 }
 ```
 
@@ -45,7 +56,7 @@ See [CHANGELOG](https://github.com/cantonios/vscode-project-templates/tree/maste
 Extension commands can be executed from the Command Palette or from the context menu when selecting a folder.
 
 <img src="https://raw.githubusercontent.com/cantonios/vscode-project-templates/master/images/commands.png" width="450" />
-<img src="https://raw.githubusercontent.com/cantonios/vscode-project-templates/master/images/menu.png" width="250" />  
+<img src="https://raw.githubusercontent.com/cantonios/vscode-project-templates/master/images/menu.png" width="250" />
 
 ### Creating a Project from a Template
 
@@ -62,21 +73,22 @@ Extension commands can be executed from the Command Palette or from the context 
 Variable placeholders can be used in templates in the following way:
 
 ```
-Author: #{author}
+Author: #{author=default}
 Title:  #{title}
 ```
 
 When a file is created from a template containing placeholders, the user is prompted for a value to enter.  Placeholders can also be used in filenames.
+A default value for given placeholder can be provided that's limited to the template and has priority over global placeholders defined in `settings.json`
 
-* Processing of placeholders can be deactivated by setting the extension property 		  
+* Processing of placeholders can be deactivated by setting the extension property
   ```
   "projectTemplates.usePlaceholders": false
   ```
 * The format of placeholders is governed by a configurable regular expression which can be set through
   ```
-  "projectTemplates.placeholderRegExp":  "#{(\\w+?)}"
+  "projectTemplates.placeholderRegExp":  "#{(\\w+)(?:=([^}]*))?}"
   ```
-  The first capture group in the regular expression is used to idenfity the placeholder key.
+  The first capture group in the regular expression is used to idenfity the placeholder key and the optional second capture is used to get default value
 * A set of common placeholder key-values pairs can be specified in a dictionary:
   ```
   "projectTemplates.placeholders": {
@@ -84,7 +96,40 @@ When a file is created from a template containing placeholders, the user is prom
 	   "company": "Wonderful Widgets Inc."
   }
   ```
-  These placeholders will be replaced without prompting.
+  These placeholders will be filled out when creating template but will not be replaced automatically.
+
+## Optional blocks
+
+```cmake
+add_executable(#{TEST_EXECUTABLE=tests} tests.cpp)
+target_link_libraries(tests PRIVATE lib)
+
+//-- BEGIN OPTIONAL: includeCatch2
+include(FetchContent)
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG #{CATCH2_VERSION=3.4.0}
+)
+FetchContent_MakeAvailable(Catch2)
+
+target_link_libraries(#{TEST_EXECUTABLE} PRIVATE Catch2::Catch2WithMain)
+//-- END OPTIONAL: includeCatch2
+```
+
+When a file is created from a template containing optional blocks, the user is given a choice to include them before placeholders get processed.
+Accepting one block with given title would make it get automatically accepted in other files as well
+
+* Processing of optional blocks can be deactivated by setting the extension property
+  ```
+  "projectTemplates.useOptionalBlocks": false
+  ```
+* The format of optional blocks is governed by a configurable regular expression which can be set through
+  ```
+  "projectTemplates.optionalBlockRegExp":  "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1"
+  ```
+  The first capture group in the regular expression is used to idenfity the block and the second capture is the content
+
 
 ## Templates Location
 
@@ -109,8 +154,3 @@ This path supports VSCode's predefined variables, such as `${env:HOME}`.
 ### Samples
 
 A set of sample templates can be found [here](https://github.com/cantonios/vscode-project-templates/tree/master/templates)
-
-
-
-
-

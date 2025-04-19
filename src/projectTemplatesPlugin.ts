@@ -1,14 +1,14 @@
 'use strict';
 
-import {WorkspaceConfiguration} from 'vscode';
 import * as vscode from 'vscode';
+import { WorkspaceConfiguration } from 'vscode';
+import VariableResolver from './utilities/variableResolver';
 
 import fs = require('fs');
 import path = require('path');
 
 import fsutils = require("./utilities/fsutils");
 import fmutils = require("./utilities/fmutils");
-import VariableResolver from './utilities/variableResolver';
 
 /**
  * Main class to handle the logic of the Project Templates
@@ -287,8 +287,8 @@ export default class ProjectTemplatesPlugin {
                 // check if exists
                 if (fs.existsSync(templateDir)) {
                     // confirm over-write
-                    await vscode.window.showQuickPick(["Yes", "No"], { 
-                            placeHolder: "Template '" + filename + "' already exists.  Do you wish to overwrite?" 
+                    await vscode.window.showQuickPick(["Yes", "No"], {
+                            placeHolder: "Template '" + filename + "' already exists.  Do you wish to overwrite?"
                         }).then(
                             async (choice) => {
                                 if (choice === "Yes") {
@@ -316,7 +316,8 @@ export default class ProjectTemplatesPlugin {
      * @param data - Buffer containing the file content to process
      * @param optionalBlockRegExp - RegExp to identify optional blocks (first capture group should be the block title)
      * @param placeholderRegExp - RegExp to identify placeholders (first capture group should be the key name)
-     * @param placeholders - Dictionary mapping placeholder keys to their replacement values
+     * @param globalPlaceholders dictionary of global placeholder key-value pairs defined in user settings
+     * @param globalPlaceholders dictionary of placeholder key-value pairs that appeared in current template
      * @param usePlaceholders - Whether placeholder replacement should be performed
      * @param useOptionalBlocks - Whether optional blocks should be processed
      * @returns The processed file content as a Buffer, maintaining the original encoding
@@ -325,7 +326,8 @@ export default class ProjectTemplatesPlugin {
         data : Buffer,
         optionalBlockRegExp : RegExp,
         placeholderRegExp : RegExp,
-        placeholders : {[placeholder: string] : string | undefined},
+        globalPlaceholders : {[placeholder: string] : string | undefined},
+        confirmedPlaceholders : {[placeholder: string] : string | undefined},
         usePlaceholders: boolean,
         useOptionalBlocks: boolean
     ) : Promise<Buffer> {
@@ -347,7 +349,7 @@ export default class ProjectTemplatesPlugin {
         }
 
         if (usePlaceholders) {
-            str = await this.resolvePlaceholders(str, placeholderRegExp, placeholders)
+            str = await this.resolvePlaceholders(str, placeholderRegExp, globalPlaceholders, confirmedPlaceholders)
         }
 
         let out: Buffer = Buffer.from(str, encoding);
@@ -397,35 +399,41 @@ export default class ProjectTemplatesPlugin {
      * @param placeholderRegExp  regular expression to use for detecting
      *                           placeholders.  The first capture group is used
      *                           as the key.
-     * @param placeholders dictionary of placeholder key-value pairs
+     * @param globalPlaceholders dictionary of global placeholder key-value pairs defined in user settings
+     * @param globalPlaceholders dictionary of placeholder key-value pairs that appeared in current template
      * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolvePlaceholders(data : string, placeholderRegExp : RegExp,
-        placeholders : {[placeholder: string] : string | undefined} ) : Promise<string> {
+    private async resolvePlaceholders(
+        data : string,
+        placeholderRegExp : RegExp,
+        globalPlaceholders : {[placeholder: string] : string | undefined},
+        confirmedPlaceholders : {[placeholder: string] : string | undefined},
+    ) : Promise<string> {
 
         // collect set of expressions and their replacements
         let match;
         let nmatches = 0;
         let str : string = data;
 
-        while (match = placeholderRegExp.exec(str)) {
-            let key = match[1];
-            let val : string | undefined = placeholders[key];
-            if (!val) {
+        while ((match = placeholderRegExp.exec(str))) {
+            const placeholder = match[1];
+            let defaultValue : string | undefined = match[2];
 
-                let variableInput = <vscode.InputBoxOptions> {
-                    prompt: `Please enter the desired value for "${match[0]}"`
+            // Only prompt for placeholders that haven't appeared yet
+            if (!confirmedPlaceholders[placeholder]) {
+                const initialValue : string = defaultValue || globalPlaceholders[placeholder] || '';
+                let variableInput = <vscode.InputBoxOptions>{
+                    prompt: `Please enter the desired value for "${placeholder}"`,
+                    value: initialValue // Set default value in the input box
                 };
 
-                val = await vscode.window.showInputBox(variableInput).then(
-                    value => {
-                        if (value) {
-                            // update map
-                            placeholders[key] = value;
-                        }
-                        return value;
-                    }
-                );
+                const value = await vscode.window.showInputBox(variableInput)
+                if (value) {
+                    confirmedPlaceholders[placeholder] = value;
+                } else if (globalPlaceholders[placeholder]) {
+                    // If user cancels but a global value exists, use that
+                    confirmedPlaceholders[placeholder] = globalPlaceholders[placeholder];
+                }
             }
             ++nmatches;
         }
@@ -434,12 +442,11 @@ export default class ProjectTemplatesPlugin {
         placeholderRegExp.lastIndex = 0;
 
         // compute output
-        let out : string = data;
         if (nmatches > 0) {
             // replace placeholders in string
             str = str.replace(placeholderRegExp,
                 (match, key) => {
-                    let val = placeholders[key];
+                    let val = confirmedPlaceholders[key];
                     if (!val) {
                         val = match;
                     }
@@ -448,7 +455,7 @@ export default class ProjectTemplatesPlugin {
             );
         }
 
-        return out;
+        return str;
     }
 
     /**
@@ -475,18 +482,22 @@ export default class ProjectTemplatesPlugin {
         }
 
         // update placeholder configuration
-        let usePlaceholders = this.config.get("usePlaceholders", false);
-        let useOptionalBlocks = this.config.get("useOptionalBlocks", false);
+        let usePlaceholders : boolean = this.config.get("usePlaceholders", false);
+        let useOptionalBlocks : boolean = this.config.get("useOptionalBlocks", false);
 
-        const optionalBlockRegex = /:::[ \t]*optional\{title="?([^"]+)"?\}[ \t]*\r?\n([\s\S]*?)[ \t]*:::/g;
-        const placeholderRegex = /#\{([A-Za-z0-9_]+)(?:=([^}]*))?\}/g;
+        const optionalBlockRegex : string = this.config.get("optionalBlockRegExp", "\\/\\/--\\s*BEGIN\\s+OPTIONAL:\\s+(\\w+)\\s*([\\s\\S]*?)(?:\\s*?)\\/\\/--\\s*END\\s+OPTIONAL:\\s+\\1");
+        const placeholderRegex : string = this.config.get("placeholderRegex", "#{([A-Za-z0-9_]+)(?:=([^}]*))?}");
 
-        let placeholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
+        const optionalBlockRegExp : RegExp = RegExp(optionalBlockRegex, 'g')
+        const placeholderRegExp : RegExp = RegExp(placeholderRegex, 'g')
+
+        let globalPlaceholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
+        let confirmedPlaceholders : {[placeholder:string] : string|undefined} = {};
 
         // re-read configuration, merge with current list of placeholders
         let newplaceholders : {[placeholder : string] : string} = this.config.get("placeholders", {});
         for (let key in newplaceholders) {
-            placeholders[key] = newplaceholders[key];
+            globalPlaceholders[key] = newplaceholders[key];
         }
 
         // recursively copy files, replacing placeholders as necessary
@@ -494,7 +505,7 @@ export default class ProjectTemplatesPlugin {
 
             // maybe replace placeholders in filename
             if (usePlaceholders) {
-                dest = await this.resolvePlaceholders(dest, placeholderRegex, placeholders) as string;
+                dest = await this.resolvePlaceholders(dest, placeholderRegExp, globalPlaceholders, confirmedPlaceholders) as string;
             }
 
 			if (fs.lstatSync(src).isDirectory()) {
@@ -538,7 +549,7 @@ export default class ProjectTemplatesPlugin {
                         
                         // ask if user wants to replace, otherwise prompt for new filename
                         let reldest = path.relative(workspace, dest);
-                        let choice = await vscode.window.showQuickPick(["Overwrite", "Rename", "Skip", "Abort"], { 
+                        let choice = await vscode.window.showQuickPick(["Overwrite", "Rename", "Skip", "Abort"], {
                             placeHolder: `Destination file "${reldest}" already exists.  What would you like to do?`
                         });
 
@@ -580,7 +591,7 @@ export default class ProjectTemplatesPlugin {
                 let fileContents : Buffer = fs.readFileSync(src);
 
                 fileContents = await this.handleFileContents(
-                    fileContents, optionalBlockRegex, placeholderRegex, placeholders, usePlaceholders, useOptionalBlocks
+                    fileContents, optionalBlockRegExp, placeholderRegExp, globalPlaceholders, confirmedPlaceholders, usePlaceholders, useOptionalBlocks
                 );
 
                 // ensure directories exist

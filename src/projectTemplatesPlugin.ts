@@ -320,12 +320,11 @@ export default class ProjectTemplatesPlugin {
      *                            as the block title.
      * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolveOptionalBlocks(data : string, optionalBlockRegExp : string) : Promise<string> {
+    private async resolveOptionalBlocks(data : string, optionalBlockRegExp : RegExp) : Promise<string> {
         let processedStr : string = data;
         let optionalMatch;
-        let regex = RegExp(optionalBlockRegExp, 'g');
 
-        while (optionalMatch = regex.exec(processedStr)) {
+        while (optionalMatch = optionalBlockRegExp.exec(processedStr)) {
             const block = optionalMatch[0];
             const title = optionalMatch[1].replace(/["']/g, '');
             const content = optionalMatch[2];
@@ -346,7 +345,7 @@ export default class ProjectTemplatesPlugin {
     }
 
     /**
-     * Replaces any placeholders found within the input data.  Will use a 
+     * Replaces any placeholders found within the input data.  Will use a
      * dictionary of values from the user's workspace settings, or will prompt
      * if value is not known.
      *
@@ -357,18 +356,15 @@ export default class ProjectTemplatesPlugin {
      * @param placeholders dictionary of placeholder key-value pairs
      * @returns the (potentially) modified data, with the same type as the input data
      */
-    private async resolvePlaceholders(data : string, placeholderRegExp : string,
+    private async resolvePlaceholders(data : string, placeholderRegExp : RegExp,
         placeholders : {[placeholder: string] : string | undefined} ) : Promise<string | Buffer> {
-
-        // resolve each placeholder
-        let regex = RegExp(placeholderRegExp, 'g');
 
         // collect set of expressions and their replacements
         let match;
         let nmatches = 0;
         let str : string = data;
 
-        while (match = regex.exec(str)) {
+        while (match = placeholderRegExp.exec(str)) {
             let key = match[1];
             let val : string | undefined = placeholders[key];
             if (!val) {
@@ -391,13 +387,13 @@ export default class ProjectTemplatesPlugin {
         }
 
         // reset regex
-        regex.lastIndex = 0;
+        placeholderRegExp.lastIndex = 0;
 
         // compute output
-        let out : string | Buffer = data;
+        let out : string = data;
         if (nmatches > 0) {
             // replace placeholders in string
-            str = str.replace(regex, 
+            str = str.replace(placeholderRegExp,
                 (match, key) => {
                     let val = placeholders[key];
                     if (!val) {
@@ -436,7 +432,11 @@ export default class ProjectTemplatesPlugin {
 
         // update placeholder configuration
         let usePlaceholders = this.config.get("usePlaceholders", false);
-        let placeholderRegExp = this.config.get("placeholderRegExp", "#{(\\w+?)}");
+        let useOptionalBlocks = this.config.get("useOptionalBlocks", false);
+
+        const optionalBlockRegex = /:::[ \t]*optional\{title="?([^"]+)"?\}[ \t]*\r?\n([\s\S]*?)[ \t]*:::/g;
+        const defaultValueRegex = /#\{([A-Za-z0-9_]+)(?:=([^}]*))?\}/g;
+
         let placeholders : {[placeholder:string] : string|undefined} = this.config.get("placeholders", {});
 
         // re-read configuration, merge with current list of placeholders
